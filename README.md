@@ -16,6 +16,16 @@ consonant-annotator-store depends on the following software components:
   * python-consonant (master)
   * python-twisted >= 11.1.0
 
+To run the test suite using
+
+    python setup.py check
+
+the following additional depencies are required:
+
+  * pep8 >= 1.4.8
+  * pep257 >= 0.2.4
+  * cmdtest >= 0.9
+
 
 Building & Installing
 ---------------------
