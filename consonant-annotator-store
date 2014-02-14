@@ -18,8 +18,101 @@
 
 
 import cliapp
+import consonant
+import json
 import pygit2
 import yaml
+
+from twisted.internet import reactor
+from twisted.web.server import Site
+from twisted.web.resource import Resource
+
+
+class AnnotationPage(Resource):
+
+    def __init__(self, store, id):
+        self.store = store
+        self.id = id
+
+    def render_GET(self, request):
+        # handle GET /annotations/:id
+        pass
+
+    def render_PUT(self, request):
+        # handle PUT /annotations/:id
+        pass
+
+    def render_DELETE(self, request):
+        # handle DELETE /annotations/:id
+        pass
+
+
+class AnnotationsPage(Resource):
+
+    def __init__(self, store):
+        Resource.__init__(self)
+
+        self.store = store
+
+    def render_GET(self, request):
+        # handle GET /annotations
+        pass
+
+    def render_POST(self, request):
+        # handle POST /annotations
+        pass
+
+    def getChild(self, name, request):
+        return AnnotationPage(self.store, name)
+
+
+class SearchPage(Resource):
+
+    def __init__(self, store):
+        Resource.__init__(self)
+
+        self.store = store
+
+    def render_GET(self, request):
+        # handle GET /search?...
+        pass
+
+
+class AnnotatorStore(Resource):
+
+    def __init__(self, app, service):
+        Resource.__init__(self)
+
+        self.app = app
+        self.service = service
+
+        self.putChild('', self)
+        self.putChild('annotations', AnnotationsPage(self))
+        self.putChild('search', SearchPage(self))
+
+    def respond(self, request, data):
+        # allow cross-domain requests to this store
+        request.setHeader('Access-Control-Allow-Origin', '*')
+
+        # set the content type of the response to JSON
+        request.setHeader('Content-Type', 'application/json')
+
+        # return a JSON response
+        return json.dumps(data)
+
+    def render_GET(self, request):
+        # handle GET /
+
+        return self.respond(request, {
+            'name': 'Consonant Annotator Store',
+            'version': '1.0.0'
+            })
+
+    def run(self, port):
+        self.app.output.write('Running annotator store on port %s.\n' % port)
+        factory = Site(self)
+        reactor.listenTCP(port, factory)
+        reactor.run()
 
 
 class ConsonantAnnotatorStore(cliapp.Application):
@@ -48,13 +141,25 @@ class ConsonantAnnotatorStore(cliapp.Application):
         # create an initial commit with the meta data
         author = pygit2.Signature(self.git_config('user.name'),
                                   self.git_config('user.email'))
-        commit_oid = repo.create_commit('refs/heads/master',
-                           author, author, 'Initial import',
-                           tree_oid, [])
+        commit_oid = repo.create_commit('refs/heads/master', author, author,
+                                        'Initial import', tree_oid, [])
 
         # hint at success
         self.output.write('Store created successfully.\n')
         self.output.write('Branch master, commit %s.\n' % commit_oid.hex)
+
+    def cmd_run(self, args):
+        if len(args) < 2:
+            raise cliapp.AppException('Usage: %s run DIRECTORY PORT' %
+                                      __file__)
+
+        # obtain a Consonant service for the given repository directory
+        factory = consonant.service.factories.ServiceFactory()
+        service = factory.service(args[0])
+
+        # instantiate an annotator store and serve it over the given port
+        annotator_store = AnnotatorStore(self, service)
+        annotator_store.run(int(args[1]))
 
 
 if __name__ == '__main__':
