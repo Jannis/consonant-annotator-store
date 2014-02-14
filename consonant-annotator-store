@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+#
+# Copyright (C) 2014 Jannis Pohlmann <jannis@xfce.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+
+# You should have received a copy of the GNU Affero General Public
+# License along with this program.  If not, see
+# <http://www.gnu.org/licenses/>.
+
+
+import cliapp
+import pygit2
+import yaml
+
+
+class ConsonantAnnotatorStore(cliapp.Application):
+
+    def git_config(self, *args):
+        return self.runcmd(['git', 'config'] + list(args)).strip()
+
+    def cmd_setup(self, args):
+        if not args:
+            raise cliapp.AppException('Usage: %s setup DIRECTORY' % __file__)
+
+        # initialise the repository
+        repo = pygit2.init_repository(args[0])
+        
+        # create a consonant.yaml blob
+        blob_oid = repo.create_blob(yaml.dump({
+            'name': 'com.github.jannis.consonant-annotator-store.store.1',
+            'schema': 'com.github.jannis.consonant-annotator-store.schema.1'
+            }, default_flow_style=False))
+
+        # write the blob to a tree
+        builder = repo.TreeBuilder()
+        builder.insert('consonant.yaml', blob_oid, pygit2.GIT_FILEMODE_BLOB)
+        tree_oid = builder.write()
+
+        # create an initial commit with the meta data
+        author = pygit2.Signature(self.git_config('user.name'),
+                                  self.git_config('user.email'))
+        commit_oid = repo.create_commit('refs/heads/master',
+                           author, author, 'Initial import',
+                           tree_oid, [])
+
+        # hint at success
+        self.output.write('Store created successfully.\n')
+        self.output.write('Branch master, commit %s.\n' % commit_oid.hex)
+
+
+if __name__ == '__main__':
+    ConsonantAnnotatorStore().run()
