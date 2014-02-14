@@ -2,7 +2,9 @@ Consonant Annotator Store
 =========================
 
 consonant-annotator-store is a store backend for
-[Annotator](http://annotatorjs.org) based on Consonant.
+[Annotator](http://annotatorjs.org) based on
+[Consonant](http://github.com/CodethinkLabs/python-consonant/)
+([specification](http://github.com/CodethinkLabs/consonant/).
 
 
 Dependencies
