@@ -1,0 +1,6 @@
+name: com.github.jannis.consonant-annotator-store.schema.1
+classes:
+  annotation:
+    properties:
+      json:
+        type: text
