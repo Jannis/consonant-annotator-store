@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="http://assets.annotateit.org/annotator/v1.2.7/annotator.min.css"/>
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7/jquery.js"></script>
+    <script type="text/javascript" src="http://assets.annotateit.org/annotator/v1.2.7/annotator-full.js"></script>
+    <script type="text/javascript">
+      $(document).ready(function() {
+        $('body').annotator()
+                 .annotator('addPlugin', 'Tags')
+                 .annotator('addPlugin', 'Filter')
+                 //.annotator('addPlugin', 'Markdown')
+                 .annotator('addPlugin', 'Store', {
+                   prefix: 'http://localhost:9009',
+                   annotationData: {
+                     'uri': document.URL
+                   },
+                   loadFromSearch: {
+                     'limit': 2000,
+                   }
+                 });
+      });
+    </script>
+  </head>
+  <body>
+    <h1>Consonant Annotator Store Example</h1>
+    <p>
+      This is an example page that can be used to test Annotator with `consonant-annotator-store`.
+      It comes with jQuery and Annotator integrated and assumes Annotator is operating against a
+      local annotator store serving from `http://localhost:9090`.
+    </p>
+    <h2>Steps to get this running</h2>
+    <ol>
+      <li>
+        <p>Create a new Consonant Annotator store using:</p>
+        <pre><code>consonant-annotator-store setup /tmp/annonator-store</code></pre>
+      </li>
+      <li>
+        <p>Run the standalone Consonant Annotator store server using:</p>
+        <pre><code>consonant-annotator-store run /tmp/annotator-store 9090</code></pre>
+      </li>
+      <li>
+        <p>Reload this page.</p>
+        <p>Add/update/delete annotations.</p>
+        <p>Restart the store server and reload this page at will. The annotations should be preserved.</p>
+      </li>
+    </ol>
+  </body>
+</html>
