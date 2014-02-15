@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (C) 2013 Codethink Limited
+# Copyright (C) 2013-2014 Codethink Limited
 # Copyright (C) 2014 Jannis Pohlmann <jannis@xfce.org>
 #
 # This program is free software: you can redistribute it and/or modify
