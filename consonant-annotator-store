@@ -18,63 +18,211 @@
 
 import cliapp
 import consonant
+import datetime
 import json
 import pygit2
+import time
+import uuid
 import yaml
+
+from consonant.transaction import actions, transaction
 
 from twisted.internet import reactor
 from twisted.web.server import Site
 from twisted.web.resource import Resource
 
 
-class AnnotationPage(Resource):
-
-    def __init__(self, store, id):
-        self.store = store
-        self.id = id
-
-    def render_GET(self, request):
-        # handle GET /annotations/:id
-        pass
-
-    def render_PUT(self, request):
-        # handle PUT /annotations/:id
-        pass
-
-    def render_DELETE(self, request):
-        # handle DELETE /annotations/:id
-        pass
-
-
-class AnnotationsPage(Resource):
+class Page(Resource):
 
     def __init__(self, store):
-        Resource.__init__(self)
-
         self.store = store
 
+    def render_OPTIONS(self, request):
+        return self.render_GET(request)
+
+    def respond(self, request, data, **kwargs):
+        # allow cross-domain requests to this store
+        request.setHeader('Access-Control-Allow-Origin', '*')
+        request.setHeader('Access-Control-Expose-Headers',
+                          'Content-Length, Content-Type, Location')
+
+        if request.method == 'OPTIONS':
+            request.setHeader('Access-Control-Allow-Headers',
+                              'Content-Length, Content-Type, '
+                              'X-Annotator-Auth-Token, X-Requested-With')
+            request.setHeader('Access-Control-Allow-Methods',
+                              'GET, POST, PUT, DELETE, OPTIONS')
+
+        # set the response status
+        request.setResponseCode(kwargs.get('status', 200))
+
+        # set the content type
+        content_type = kwargs.get('content_type', 'application/json')
+        request.setHeader('Content-Type', content_type)
+
+        # return the data in the response body
+        if content_type == 'application/json':
+            return json.dumps(data)
+        else:
+            return data
+
+    def respond_404(self, request):
+        return self.respond(request, '<h1>404 Not Found</h1>',
+                            status=404, content_type='text/html')
+
+    def respond_data_or_404(self, request, annotation):
+        if annotation is None:
+            return self.respond_404(request)
+        else:
+            return self.respond(request, annotation)
+
+
+class RootPage(Page):
+
     def render_GET(self, request):
-        # handle GET /annotations
-        pass
+        """GET /."""
+
+        return self.respond(request, {
+            'name': 'Consonant Annotator Store',
+            'version': '1.0.0'
+            })
+
+
+class AnnotationsPage(Page):
+
+    def render_GET(self, request):
+        """GET /annotations."""
+
+        annotations = self.store.fetch_annotations()
+        data = [json_data for object, json_data in annotations]
+        return self.respond(request, data)
 
     def render_POST(self, request):
-        # handle POST /annotations
-        pass
+        """POST /annotations."""
 
-    def getChild(self, name, request):
+        # parse json and extract ranges and permissions
+        json_data = json.loads(request.content.read())
+
+        # set our own fields
+        json_data['id'] = uuid.uuid4().hex
+        json_data['created'] = datetime.datetime.now().isoformat()
+        json_data['updated'] = json_data['created']
+
+        # store the raw JSON data in the json property
+        property = consonant.store.properties.TextProperty(
+            'json', json.dumps(json_data))
+
+        # create the annotation in the Consonant store
+        self.store.send_transaction(
+            'Create annotation %s' % json_data['id'],
+            actions.CreateAction('create', 'annotation', [property]))
+
+        # respond with the created annotation as JSON
+        return self.respond(request, json_data)
+
+    def getChildWithDefault(self, name, request):
         return AnnotationPage(self.store, name)
 
 
-class SearchPage(Resource):
+class AnnotationPage(Page):
 
-    def __init__(self, store):
-        Resource.__init__(self)
-
-        self.store = store
+    def __init__(self, store, id):
+        Page.__init__(self, store)
+        self.id = id
 
     def render_GET(self, request):
-        # handle GET /search?...
-        pass
+        """GET /annotations/:id."""
+
+        object, json_data = self.store.fetch_annotation_by_id(self.id)
+        return self.respond_data_or_404(request, json_data)
+
+    def render_PUT(self, request):
+        """PUT /annotations/:id."""
+
+        # fetch annotation matching the ID
+        object, json_data = self.store.fetch_annotation_by_id(self.id)
+
+        # respond with a 404 if the annotation does not exist
+        if not object:
+            return self.respond_404(request)
+
+        # load request body
+        updated_fields = json.loads(request.content.read())
+
+        # make sure not to overwrite essential fields
+        for field in ('id', 'created'):
+            updated_fields.pop(field, None)
+
+        # fold the updated fields into the current annotation data
+        json_data.update(updated_fields)
+
+        # set the "updated" timestamp
+        json_data['updated'] = datetime.datetime.now().isoformat()
+
+        # store the new data in the json property
+        property = consonant.store.properties.TextProperty(
+            'json', json.dumps(json_data))
+
+        # update the annotation in the Consonant store
+        self.store.send_transaction(
+            'Update annotation %s' % json_data['id'],
+             actions.UpdateAction('delete', object.uuid, None, [property]))
+
+        # respond with the updated annotation as JSON
+        return self.respond(request, json_data)
+
+    def render_DELETE(self, request):
+        """DELETE /annotations/:id."""
+
+        # fetch annotation objects
+        object, json_data = self.store.fetch_annotation_by_id(self.id)
+
+        # fail with a 404 if the annotation does not exist
+        if not object:
+            return self.respond_404(request)
+
+        # delete the annotation in the Consonant store
+        self.store.send_transaction(
+            'Delete annotation %s' % json_data['id'],
+            actions.DeleteAction('delete', object.uuid, None))
+
+        # return a 204, as there is no content anymore now
+        return self.respond(request, '', status=204, content_type='text/plain')
+
+
+class SearchPage(Page):
+
+    def render_GET(self, request):
+        """GET /search?text=."""
+
+        # parse search parameters
+        text = request.args.get('text', [''])[0]
+        uri = request.args.get('uri', [None])[0]
+        limit = int(request.args.get('limit', [0])[0])
+        offset = min(0, int(request.args.get('offset', [0])[0]))
+
+        # filter annotations based on the URI and search text
+        matches = list(self.store.fetch_annotations())
+        if uri:
+            matches[:] = [(object, json_data)
+                          for object, json_data in matches
+                          if uri == json_data.get('uri', None)]
+        if text:
+            matches[:] = [(object, json_data)
+                          for object, json_data in matches
+                          if text in json_data.get('text', None)]
+
+        # slice the result list depending on offset and limit
+        if limit <= 0:
+            sliced_matches = matches[offset:]
+        else:
+            sliced_matches = matches[offset:offset+limit]
+
+        # return the result
+        return self.respond(request, {
+            'total': len(matches),
+            'rows': [json_data for object, json_data in sliced_matches]
+            })
 
 
 class AnnotatorStore(Resource):
@@ -85,33 +233,58 @@ class AnnotatorStore(Resource):
         self.app = app
         self.service = service
 
-        self.putChild('', self)
+        self.putChild('', RootPage(self))
         self.putChild('annotations', AnnotationsPage(self))
         self.putChild('search', SearchPage(self))
 
-    def respond(self, request, data):
-        # allow cross-domain requests to this store
-        request.setHeader('Access-Control-Allow-Origin', '*')
-
-        # set the content type of the response to JSON
-        request.setHeader('Content-Type', 'application/json')
-
-        # return a JSON response
-        return json.dumps(data)
-
-    def render_GET(self, request):
-        # handle GET /
-
-        return self.respond(request, {
-            'name': 'Consonant Annotator Store',
-            'version': '1.0.0'
-            })
-
     def run(self, port):
-        self.app.output.write('Running annotator store on port %s.\n' % port)
+        self.app.output.write('Serving annotations on port %s.\n' % port)
         factory = Site(self)
         reactor.listenTCP(port, factory)
         reactor.run()
+
+    def send_transaction(self, message, action):
+        # retrieve the master branch from the Consonant store
+        master = self.service.ref('master')
+
+        # define a begin and create action
+        begin = actions.BeginAction('begin', master.head.sha1)
+        author = '%s <%s>' % (self.app.git_config('user.name'),
+                              self.app.git_config('user.email'))
+        commit = actions.CommitAction('commit', 'refs/heads/master',
+                                      author, time.strftime('%s %z'),
+                                      author, time.strftime('%s %z'),
+                                      message)
+
+        # create and apply the transaction
+        t = transaction.Transaction([begin, action, commit])
+        self.service.apply_transaction(t)
+
+    def fetch_annotations(self):
+        """Retrieve all annotations from the Consonant store."""
+
+        master = self.service.ref('master')
+        try:
+            klass = self.service.klass(master.head, 'annotation')
+            objects = self.service.objects(master.head, klass)
+        except:
+            objects = []
+
+        # yield objects along with their JSON data
+        for object in sorted(objects, key=lambda o: o.uuid):
+            yield object, json.loads(object['json'])
+
+    def fetch_annotation_by_id(self, id):
+        """Retrieve a single annotation from the store by its ID."""
+
+        annotations = self.fetch_annotations()
+        matches = [(object, json_data)
+                   for object, json_data in annotations
+                   if json_data.get('id', None) == id]
+        if not matches:
+            return None, None
+        else:
+            return matches[0]
 
 
 class ConsonantAnnotatorStore(cliapp.Application):
@@ -128,7 +301,7 @@ class ConsonantAnnotatorStore(cliapp.Application):
         
         # create a consonant.yaml blob
         blob_oid = repo.create_blob(yaml.dump({
-            'name': 'com.github.jannis.consonant-annotator-store.store.1',
+            'name': 'com.github.jannis.consonant-annotator-store.store',
             'schema': 'com.github.jannis.consonant-annotator-store.schema.1'
             }, default_flow_style=False))
 
