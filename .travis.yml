@@ -1,0 +1,30 @@
+language: python
+notifications:
+  email:
+    recipients:
+      - jannis@xfce.org
+    on_success: change
+    on_failure: always
+python:
+  - "2.7"
+env: >
+  LIBGIT2=~/libgit2/_install/
+  LD_LIBRARY_PATH=~/libgit2/_install/lib
+  CFLAGS=-fPIC
+  LDFLAGS="-lrt -Wl,--no-as-needed"
+before_install:
+  - sudo apt-get install cmake
+  - "./.travis-libgit2.sh"
+install:
+  - pip install twisted
+  - pip install pygit2
+  - pip install PyYAML
+  - pip install pep8
+  - pip install -Iv https://github.com/GreenSteam/pep257/archive/0.2.4.tar.gz
+  - pip install git+git://git.liw.fi/cliapp
+  - pip install git+https://github.com/CodethinkLabs/python-consonant.git
+before_script:
+  - git config --global user.name "Test user"
+  - git config --global user.email "test.user@project.org"
+script:
+  - python setup.py check
