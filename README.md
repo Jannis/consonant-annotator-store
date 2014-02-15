@@ -13,6 +13,8 @@ Dependencies
 consonant-annotator-store depends on the following software components:
 
   * Python >= 2.7.0
+  * PyYAML >= 3.10 (with libyaml support)
+  * pygit2 >= 0.19.0
   * python-consonant (master)
   * python-twisted >= 11.1.0
 
@@ -45,7 +47,32 @@ from Git directly using pip:
 Usage
 -----
 
-TODO
+Once all the depencies have been installed, the Consonant register has
+to be updated to allow Consonant Annotator stores to resolve into the
+Consonant Annotator schema.
+
+In the root directory of the consonant-annotator-store source tree,
+run the following:
+
+    mkdir -p $HOME/.config/consonant/register.yaml
+    cat <<-EOF > $HOME/.config/consonant/register.yaml
+    schemas:
+      com.github.jannis.consonant-annotator-store.schema.1: $(pwd)/data/com.github.jannis.consonant-annotator-store.schema.1.yaml
+    EOF
+
+To create a new store for annotations, run:
+
+    ./consonant-annotator-store setup /tmp/store
+
+To spin up a standalone Consonant Annotator store server on port
+9009, run:
+
+    ./consonant-annotator-store run /tmp/store 9009
+
+In order to test whether the annotator server is up, running and (most
+importantly) working, open the `example.html` page in a browser on the
+same machine. It should be able to talk to the annotation store via
+port 9009.
 
 
 Contributing
