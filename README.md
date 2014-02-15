@@ -54,7 +54,7 @@ Consonant Annotator schema.
 In the root directory of the consonant-annotator-store source tree,
 run the following:
 
-    mkdir -p $HOME/.config/consonant/register.yaml
+    mkdir -p $HOME/.config/consonant
     cat <<-EOF > $HOME/.config/consonant/register.yaml
     schemas:
       com.github.jannis.consonant-annotator-store.schema.1: $(pwd)/data/com.github.jannis.consonant-annotator-store.schema.1.yaml
